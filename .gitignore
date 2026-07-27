@@ -1,0 +1,8 @@
+# Final CSV files are uploaded as GitHub Actions artifacts.
+data/venkel_ultra_precision_thin_film_resistors.csv
+data/venkel_ultra_precision_thin_film_resistors.csv.gz
+
+# Local Python files
+__pycache__/
+*.py[cod]
+.venv/
