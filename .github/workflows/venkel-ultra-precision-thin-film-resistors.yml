@@ -1,0 +1,112 @@
+name: Venkel Ultra Precision Thin Film Resistors Scraper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "29 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: venkel-ultra-precision-thin-film-resistors-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Validate Venkel scraper file
+        shell: bash
+        run: |
+          python -m py_compile scraper.py
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("scraper.py").read_text(encoding="utf-8")
+          assert "2026-07-27-venkel-ultra-precision-v1" in text, "Wrong scraper.py version uploaded"
+          assert "from playwright.async_api" in text, "scraper.py is not the Playwright Venkel scraper"
+          assert "from selenium" not in text.lower(), "Wrong Selenium scraper.py uploaded"
+          assert "www.venkel.com/category/resistors/ultra-precision-thin-film-resistors" in text, "Wrong source URL"
+          assert "venkel_ultra_precision_thin_film_resistors.csv" in text, "Wrong output filename"
+          assert r'\bUPTF' in text, "Wrong part-number series detector"
+          print("Verified Venkel Ultra Precision Thin Film Resistors scraper v1.")
+          PY
+
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Install virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run scraper in headed Chromium
+        id: scraper
+        shell: bash
+        run: |
+          set +e
+          xvfb-run -a -s "-screen 0 1600x1000x24" env \
+            MAX_RUN_MINUTES=315 \
+            HEADLESS=0 \
+            RESULTS_PER_PAGE=100 \
+            SAFE_RESULT_WINDOW=900 \
+            python scraper.py
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit resumable progress
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -f data/state.json ] && git add -f data/state.json
+          [ -f data/pending.jsonl.gz ] && git add -f data/pending.jsonl.gz
+          [ -d data/chunks ] && git add -f data/chunks
+          if git diff --cached --quiet; then
+            echo "No new progress to commit."
+          else
+            git commit -m "Save Venkel ultra-precision scraper progress"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Upload output and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: venkel-ultra-precision-thin-film-resistors-output
+          path: |
+            data/venkel_ultra_precision_thin_film_resistors.csv
+            data/venkel_ultra_precision_thin_film_resistors.csv.gz
+            data/state.json
+            data/venkel_ultra_precision_thin_film_resistors.log
+            data/captured_ultra_precision_api_template.json
+            data/captured_ultra_precision_api_response_sample.json
+            data/ultra_precision_partition_diagnostic.json
+            data/navigation_failure.png
+            data/navigation_failure.html
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Mark scraper failure
+        if: steps.scraper.outputs.exit_code != '0'
+        shell: bash
+        run: |
+          echo "Scraper exited with code ${{ steps.scraper.outputs.exit_code }}. Progress and diagnostics were saved."
+          exit 1
