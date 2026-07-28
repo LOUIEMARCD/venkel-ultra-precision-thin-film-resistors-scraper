@@ -6,7 +6,7 @@
   "rows_saved": 79898,
   "chunk_index": 15,
   "queue": [],
-  "partitions_completed": 22641,
-  "last_run_utc": "2026-07-27T19:07:17.622272+00:00",
+  "partitions_completed": 45282,
+  "last_run_utc": "2026-07-28T00:35:17.541652+00:00",
   "effective_page_size": 100
 }
